@@ -17,8 +17,12 @@ namespace jvs
 
 struct PromoteBlocksPass : llvm::PassInfoMixin<PromoteBlocksPass>
 {
+  PromoteBlocksPass(bool perInstruction = false);
+
   llvm::PreservedAnalyses run(llvm::Module& m,
     llvm::ModuleAnalysisManager& manager);
+
+  const bool PerInstruction;
 };
 
 } // namespace jvs

@@ -1,33 +1,41 @@
 #include "promote-blocks/promote-blocks.h"
 
 #include <algorithm>
-#if defined(_MSC_VER) && \
-  !defined(_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING)
-#define _SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING
-#endif
+#include <cstddef>
 #include <iterator>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/Instruction.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/CodeExtractor.h"
+
+#include "support/value-util.h"
 
 namespace
 {
 
-static constexpr char PassName[] = "promote-blocks";
+static constexpr char PromoteBlocksPassName[] = "promote-blocks";
+static constexpr char PromoteInstsPassName[] = "promote-instructions";
 static constexpr char PluginName[] = "PromoteBlocks";
 
 // Pass registration
@@ -44,9 +52,15 @@ static llvm::PassPluginLibraryInfo getPromoteBlocksPluginInfo()
         [](llvm::StringRef name, llvm::ModulePassManager& mpm,
           llvm::ArrayRef<llvm::PassBuilder::PipelineElement>)
         {
-          if (name.equals(PassName))
+          if (name.equals(PromoteBlocksPassName))
           {
             mpm.addPass(jvs::PromoteBlocksPass());
+            return true;
+          }
+
+          if (name.equals(PromoteInstsPassName))
+          {
+            mpm.addPass(jvs::PromoteBlocksPass(/*perInstruction =*/ true));
             return true;
           }
 
@@ -67,6 +81,10 @@ STATISTIC(NumIneligleBlocks,
 STATISTIC(NumFailedBlocks, 
   "Number of blocks that couldn't otherwise be promoted");
 
+jvs::PromoteBlocksPass::PromoteBlocksPass(bool perInstruction /*= false*/)
+  : PerInstruction(perInstruction)
+{
+}
 
 llvm::PreservedAnalyses jvs::PromoteBlocksPass::run(llvm::Module& m, 
   llvm::ModuleAnalysisManager& manager)
@@ -88,14 +106,86 @@ llvm::PreservedAnalyses jvs::PromoteBlocksPass::run(llvm::Module& m,
 
     // Copy all the blocks to our block list so we're not creating functions
     // while iterating over them.
-    blocksToPromote.reserve(func.size());
-    std::transform(func.begin(), func.end(),
-      std::back_inserter(blocksToPromote),
-      [](llvm::BasicBlock& block)
+    if (!PerInstruction)
+    {
+      blocksToPromote.reserve(func.size());
+      std::transform(func.begin(), func.end(),
+        std::back_inserter(blocksToPromote),
+        [](llvm::BasicBlock& block)
+        {
+          return &block;
+        });
+    }
+    else
+    {
+      blocksToPromote.reserve(std::accumulate(func.begin(),
+        func.end(), 0, 
+        [](std::size_t n, llvm::BasicBlock& b)
+        {
+          return n + b.sizeWithoutDebug();
+        }));
+
+      // Mapping of instructions to their parent block name (if the parent block
+      // has a name).
+      std::unordered_map<llvm::Instruction*, std::string> instBlockMap{};
+      // Collect the instructions for the block before modifying anything.
+      std::vector<llvm::Instruction*> insts{};
+      for (llvm::BasicBlock& block : func)
       {
-        return &block;
-      });
+        insts.reserve(block.sizeWithoutDebug());
+        if (&block == &block.getParent()->getEntryBlock())
+        {
+          // Certain instructions such as "alloca" and "llvm.localescape" *must*
+          // remain in the entry block of the function. We check for the entry 
+          // block and call llvm::PrepareToSplitEntryBlock() to ensure all the
+          // required instructions stay in the entry block.
+          llvm::PrepareToSplitEntryBlock(block, block.begin());
+        }
+
+        auto instPtrs = llvm::map_range(block, 
+          [](auto&& inst) { return &inst; });
+        std::copy_if(instPtrs.begin(), instPtrs.end(),
+          std::back_inserter(insts),
+          [&instBlockMap](llvm::Instruction* inst)
+          {
+            // Shouldn't split blocks on any of these types of instructions.
+            if (!is_any<llvm::AllocaInst, llvm::PHINode, llvm::CatchPadInst,
+              llvm::LandingPadInst, llvm::DbgInfoIntrinsic>(inst) &&
+              !inst->isTerminator())
+            {
+              instBlockMap.emplace(inst, inst->getParent()->hasName()
+                ? inst->getParent()->getName().str()
+                : "split");
+              return true;
+            }
+
+            return false;
+          });
+      }
+
+      // Split every block on the given instructions.
+      std::transform(insts.begin(), insts.end(),
+        std::back_inserter(blocksToPromote),
+        [&instBlockMap](llvm::Instruction* inst)
+        {
+          return llvm::SplitBlock(inst->getParent(), inst, 
+            /*DT*/ nullptr, 
+            /*LI*/ nullptr, 
+            /*MSSAU*/ nullptr,
+            // Function names can get unwieldy *really quick* if we let
+            // llvm::SplitBlock() pick the name of the new blocks, so we keep 
+            // the original name and let LLVM add numbers to make them 
+            // distinct.
+            [&, inst]
+            {
+              auto [instNamePair, wasEmplaced] =
+                instBlockMap.emplace(inst, "split");
+              return instNamePair->second;
+            }());
+        });
+    }
   }
+
 
   // Update the candidate block count statistic.
   NumCandidateBlocks = blocksToPromote.size();
