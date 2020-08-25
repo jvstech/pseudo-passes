@@ -10,12 +10,13 @@
 #include "llvm/Support/Error.h"
 
 
-jvs::PassPipeline::PassPipeline(std::string_view passes)
+jvs::PassPipeline::PassPipeline(std::string_view passes, bool functionPipeline)
   : pass_builder_(),
   loop_analysis_manager_(llvm::DebugFlag),
   function_analysis_manager_(llvm::DebugFlag),
   cgscc_analysis_manager_(llvm::DebugFlag),
   module_analysis_manager_(llvm::DebugFlag),
+  function_pass_manager_(llvm::DebugFlag),
   module_pass_manager_(llvm::DebugFlag),
   parse_error_()
 {
@@ -26,10 +27,21 @@ jvs::PassPipeline::PassPipeline(std::string_view passes)
   pass_builder_.crossRegisterProxies(loop_analysis_manager_,
     function_analysis_manager_, cgscc_analysis_manager_,
     module_analysis_manager_);
-  if (auto err = pass_builder_.parsePassPipeline(module_pass_manager_,
-    passes, true, llvm::DebugFlag))
+  if (!functionPipeline)
   {
-    parse_error_ = llvm::toString(std::move(err));
+    if (auto err = pass_builder_.parsePassPipeline(module_pass_manager_,
+      passes, true, llvm::DebugFlag))
+    {
+      parse_error_ = llvm::toString(std::move(err));
+    }
+  }
+  else
+  {
+    if (auto err = pass_builder_.parsePassPipeline(function_pass_manager_,
+      passes, true, llvm::DebugFlag))
+    {
+      parse_error_ = llvm::toString(std::move(err));
+    }
   }
 }
 
@@ -87,6 +99,17 @@ llvm::ModuleAnalysisManager& jvs::PassPipeline::module_analysis_manager()
   return module_analysis_manager_;
 }
 
+auto jvs::PassPipeline::function_pass_manager() const
+-> const llvm::FunctionPassManager&
+{
+  return function_pass_manager_;
+}
+
+llvm::FunctionPassManager& jvs::PassPipeline::function_pass_manager()
+{
+  return function_pass_manager_;
+}
+
 auto jvs::PassPipeline::module_pass_manager() const
 -> const llvm::ModulePassManager&
 {
@@ -108,10 +131,37 @@ llvm::PreservedAnalyses jvs::PassPipeline::run(llvm::Module& m)
   return module_pass_manager_.run(m, module_analysis_manager_);
 }
 
+llvm::PreservedAnalyses jvs::PassPipeline::run(llvm::Function& f)
+{
+  return function_pass_manager_.run(f, function_analysis_manager_);
+}
+
+jvs::PassPipeline jvs::PassPipeline::create_function_pipeline(
+  std::string_view passes)
+{
+  PassPipeline passPipeline(passes, true);
+  return passPipeline;
+}
+
+jvs::PassPipeline jvs::PassPipeline::create_module_pipeline(
+  std::string_view passes)
+{
+  PassPipeline passPipeline(passes, false);
+  return passPipeline;
+}
+
 std::tuple<llvm::PreservedAnalyses, std::string> jvs::run_pass_pipeline(
   llvm::Module& m, std::string_view passes)
 {
-  PassPipeline passPipeline(passes);
+  PassPipeline passPipeline = PassPipeline::create_module_pipeline(passes);
   llvm::PreservedAnalyses result = passPipeline.run(m);
+  return std::make_tuple(result, passPipeline.parse_error());
+}
+
+std::tuple<llvm::PreservedAnalyses, std::string> jvs::run_pass_pipeline(
+  llvm::Function& f, std::string_view passes)
+{
+  PassPipeline passPipeline = PassPipeline::create_function_pipeline(passes);
+  llvm::PreservedAnalyses result = passPipeline.run(f);
   return std::make_tuple(result, passPipeline.parse_error());
 }
