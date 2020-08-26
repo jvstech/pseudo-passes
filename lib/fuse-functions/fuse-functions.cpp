@@ -94,6 +94,7 @@ static void get_candidate_call_sites(llvm::Function& func,
             callInst->getCalledFunction() &&
             !callInst->getCalledFunction()->isIntrinsic() &&
             callInst->getCalledFunction() != callInst->getFunction() &&
+            !callInst->getCalledFunction()->isDeclaration() &&
             !callsToIgnore.count(callInst));
         }
 
@@ -281,15 +282,16 @@ llvm::PreservedAnalyses jvs::FuseFunctionsPass::run(llvm::Module& m,
 {
   // We lower invoke instructions to call instructions to be able to inline more
   // code.
-  auto [preservedAnalysis, parseError] =
+  llvm::PreservedAnalyses result;
+  std::string parseError{};
+  std::tie(result, parseError) =
     run_pass_pipeline(m, "module(function(lowerinvoke,simplifycfg),mergefunc)");
   if (!parseError.empty())
   {
     llvm::errs() << "Error parsing passes: " << parseError << '\n';
-    return preservedAnalysis;
+    return result;
   }
 
-  llvm::PreservedAnalyses result = preservedAnalysis;
   llvm::DenseSet<llvm::CallInst*> failedInlineCallSites{};
   llvm::SetVector<llvm::Function*> callTargets{};
   CallerCalleeCallSitesMap callMap =
@@ -297,22 +299,10 @@ llvm::PreservedAnalyses jvs::FuseFunctionsPass::run(llvm::Module& m,
   auto combinedCalls = combine_calls(callMap);
   std::unique_ptr<llvm::FunctionPass> reg2mem(
     llvm::createDemoteRegisterToMemoryPass());
-  std::optional<PassPipeline> mem2regPass(
-    std::in_place, PassPipeline::create_function_pipeline("mem2reg"));
-  if (!mem2regPass->parse_error().empty())
-  {
-    llvm::errs() << mem2regPass->parse_error() << '\n';
-    mem2regPass.reset();
-  }
-
+  
   llvm::for_each(combinedCalls.ModifiedCallers, [&](llvm::Function* f)
     {
       if (reg2mem->runOnFunction(*f))
-      {
-        result = llvm::PreservedAnalyses::none();
-      }
-
-      if (mem2regPass && !mem2regPass->run(*f).areAllPreserved())
       {
         result = llvm::PreservedAnalyses::none();
       }
@@ -350,23 +340,16 @@ llvm::PreservedAnalyses jvs::FuseFunctionsPass::run(llvm::Module& m,
     callMap =
       get_candidate_call_sites(m, IgnoreNoInline, failedInlineCallSites);
     combinedCalls = combine_calls(callMap);
-    if (mem2regPass)
+    if (!combinedCalls.ModifiedCallers.empty())
     {
-      mem2regPass.emplace(PassPipeline::create_function_pipeline("mem2reg"));
+      llvm::for_each(combinedCalls.ModifiedCallers, [&](llvm::Function* f)
+        {
+          if (reg2mem->runOnFunction(*f))
+          {
+            result = llvm::PreservedAnalyses::none();
+          }
+        });
     }
-
-    llvm::for_each(combinedCalls.ModifiedCallers, [&](llvm::Function* f)
-      {
-        if (reg2mem->runOnFunction(*f))
-        {
-          result = llvm::PreservedAnalyses::none();
-        }
-
-        if (mem2regPass && !mem2regPass->run(*f).areAllPreserved())
-        {
-          result = llvm::PreservedAnalyses::none();
-        }
-      });
   } while (!combinedCalls.CallSites.empty());
   
   for (llvm::Function* callTarget : callTargets)
@@ -379,6 +362,15 @@ llvm::PreservedAnalyses jvs::FuseFunctionsPass::run(llvm::Module& m,
     }
   }
 
-  return llvm::PreservedAnalyses::none();
+  llvm::PreservedAnalyses mem2regPA;
+  std::tie(mem2regPA, parseError) = 
+    run_pass_pipeline(m, "module(function(mem2reg))");
+  if (!parseError.empty())
+  {
+    llvm::errs() << parseError << '\n';
+  }
+
+  result.intersect(mem2regPA);
+  return result;
 }
 
