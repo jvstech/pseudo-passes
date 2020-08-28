@@ -8,6 +8,7 @@
 namespace llvm
 {
 
+class Function;
 class Module;
 
 } // namespace llvm
@@ -23,6 +24,13 @@ struct FuseFunctionsPass : llvm::PassInfoMixin<FuseFunctionsPass>
     llvm::ModuleAnalysisManager& manager);
 
   const bool IgnoreNoInline;
+};
+
+// Clone of the legacy 'reg2mem' pass for the new pass manager.
+struct DemoteRegistersPass : llvm::PassInfoMixin<DemoteRegistersPass>
+{
+  llvm::PreservedAnalyses run(llvm::Function& f,
+    llvm::FunctionAnalysisManager& manager);
 };
 
 } // namespace jvs

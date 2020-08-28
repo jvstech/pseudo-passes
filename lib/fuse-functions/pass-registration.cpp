@@ -18,6 +18,7 @@ static llvm::PassPluginLibraryInfo getFuseFunctionsPluginInfo()
     LLVM_VERSION_STRING,
     [](llvm::PassBuilder& passBuilder)
     {
+      // Module passes
       passBuilder.registerPipelineParsingCallback(
         [](llvm::StringRef name, llvm::ModulePassManager& mpm,
           llvm::ArrayRef<llvm::PassBuilder::PipelineElement>)
@@ -31,6 +32,20 @@ static llvm::PassPluginLibraryInfo getFuseFunctionsPluginInfo()
             name.equals("fuse-functions-force"))
           {
             mpm.addPass(jvs::FuseFunctionsPass(true));
+            return true;
+          }
+
+          return false;
+        });
+      
+      // Function passes
+      passBuilder.registerPipelineParsingCallback(
+        [](llvm::StringRef name, llvm::FunctionPassManager& fpm,
+          llvm::ArrayRef<llvm::PassBuilder::PipelineElement>)
+        {
+          if (name.equals("demote-registers"))
+          {
+            fpm.addPass(jvs::DemoteRegistersPass());
             return true;
           }
 

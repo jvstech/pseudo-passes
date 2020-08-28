@@ -297,16 +297,16 @@ llvm::PreservedAnalyses jvs::FuseFunctionsPass::run(llvm::Module& m,
   CallerCalleeCallSitesMap callMap =
     get_candidate_call_sites(m, IgnoreNoInline, failedInlineCallSites);
   auto combinedCalls = combine_calls(callMap);
-  std::unique_ptr<llvm::FunctionPass> reg2mem(
-    llvm::createDemoteRegisterToMemoryPass());
-  
-  llvm::for_each(combinedCalls.ModifiedCallers, [&](llvm::Function* f)
-    {
-      if (reg2mem->runOnFunction(*f))
-      {
-        result = llvm::PreservedAnalyses::none();
-      }
-    });
+  //std::unique_ptr<llvm::FunctionPass> reg2mem(
+  //  llvm::createDemoteRegisterToMemoryPass());
+  //
+  //llvm::for_each(combinedCalls.ModifiedCallers, [&](llvm::Function* f)
+  //  {
+  //    if (reg2mem->runOnFunction(*f))
+  //    {
+  //      result = llvm::PreservedAnalyses::none();
+  //    }
+  //  });
   
   do
   {    
@@ -340,16 +340,16 @@ llvm::PreservedAnalyses jvs::FuseFunctionsPass::run(llvm::Module& m,
     callMap =
       get_candidate_call_sites(m, IgnoreNoInline, failedInlineCallSites);
     combinedCalls = combine_calls(callMap);
-    if (!combinedCalls.ModifiedCallers.empty())
-    {
-      llvm::for_each(combinedCalls.ModifiedCallers, [&](llvm::Function* f)
-        {
-          if (reg2mem->runOnFunction(*f))
-          {
-            result = llvm::PreservedAnalyses::none();
-          }
-        });
-    }
+    //if (!combinedCalls.ModifiedCallers.empty())
+    //{
+    //  llvm::for_each(combinedCalls.ModifiedCallers, [&](llvm::Function* f)
+    //    {
+    //      if (reg2mem->runOnFunction(*f))
+    //      {
+    //        result = llvm::PreservedAnalyses::none();
+    //      }
+    //    });
+    //}
   } while (!combinedCalls.CallSites.empty());
   
   for (llvm::Function* callTarget : callTargets)
@@ -362,15 +362,17 @@ llvm::PreservedAnalyses jvs::FuseFunctionsPass::run(llvm::Module& m,
     }
   }
 
-  llvm::PreservedAnalyses mem2regPA;
-  std::tie(mem2regPA, parseError) = 
-    run_pass_pipeline(m, "module(function(mem2reg))");
-  if (!parseError.empty())
-  {
-    llvm::errs() << parseError << '\n';
-  }
-
-  result.intersect(mem2regPA);
+  //callTargets.clear();
+  //reg2mem.reset();
+  //llvm::PreservedAnalyses mem2regPA;
+  //std::tie(mem2regPA, parseError) = 
+  //  run_pass_pipeline(m, "module(function(mem2reg))");
+  //if (!parseError.empty())
+  //{
+  //  llvm::errs() << parseError << '\n';
+  //}
+  //
+  //result.intersect(mem2regPA);
   return result;
 }
 
