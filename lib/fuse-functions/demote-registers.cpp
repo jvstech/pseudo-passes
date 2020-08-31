@@ -87,7 +87,9 @@ llvm::PreservedAnalyses jvs::DemoteRegistersPass::run(llvm::Function& f,
   // Demote escaped instructions
   NumRegsDemoted += workList.size();
   for (llvm::Instruction* ilb : workList)
+  {
     llvm::DemoteRegToStack(*ilb, false, allocaInsertionPoint);
+  }
 
   workList.clear();
 

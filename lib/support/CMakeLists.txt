@@ -1,4 +1,5 @@
 add_llvm_library(support
+  metadata-util.cpp
   pass-pipeline.cpp
   )
 
