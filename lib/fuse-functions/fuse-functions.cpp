@@ -168,12 +168,16 @@ static void demote_registers(llvm::Function& f)
         jvs::attach_metadata(*instAllocaInst, jvs::FuseFunctionRet, calleeName);
         for (auto user : instAllocaInst->users())
         {
-          if (auto userInst = 
-            llvm::dyn_cast<llvm::Instruction /*llvm::StoreInst*/>(user);
-            userInst && 
-            llvm::isa<llvm::SwitchInst>(userInst->getNextNode()))
+          if (auto storeInst = llvm::dyn_cast<llvm::StoreInst>(user))
           {
-            jvs::attach_metadata(*userInst, jvs::FuseFunctionRet, calleeName);
+            jvs::attach_metadata(*storeInst, jvs::FuseFunctionRet, calleeName);
+          }
+          else if (auto userInst = llvm::dyn_cast<llvm::Instruction>(user))
+          {
+            if (llvm::isa<llvm::SwitchInst>(userInst->getNextNode()))
+            {
+              jvs::attach_metadata(*userInst, jvs::FuseFunctionRet, calleeName);
+            }
           }
         }
       }
@@ -288,13 +292,6 @@ static CallerCalleeCallSitesMap get_candidate_call_sites(llvm::Module& m,
   }
 
   return candidateCallMap;
-}
-
-static std::vector<jvs::CombinedCallSite> find_combined_calls(
-  llvm::StringRef funcName)
-{
-  // #TODO
-  __builtin_unreachable();
 }
 
 /// Returns the first block in the given function containing only an 
@@ -425,6 +422,26 @@ static CombinedCallSiteWorkLists combine_calls(
       // This is the actual call to the callee.
       combinedCallInst =
         llvm::CallInst::Create(callee, llvm::makeArrayRef(args), "", callBlock);
+      // Create a return value store if the callee doesn't return `void`. This
+      // should always be done even if the call ignores the return value, as
+      // other calls may *not* ignore it. After inlining, it's extremely 
+      // difficult to tell which value is supposed to be the the return value,
+      // so storing the *known* return value here simplifies the process. We can
+      // remove it after all inlining is finished if the store turns out to be
+      // dead.
+      if (!callee->getReturnType()->isVoidTy())
+      {
+        auto allocaRetInst = new llvm::AllocaInst(callee->getReturnType(),
+          callee->getParent()->getDataLayout().getAllocaAddrSpace(),
+          ".fuse.return.buffer", 
+          &*callBlock->getParent()->getEntryBlock().begin());
+        auto storeRetInst = new llvm::StoreInst(combinedCallInst, allocaRetInst,
+          combinedCallInst);
+        storeRetInst->moveAfter(combinedCallInst);
+        jvs::attach_metadata(jvs::FuseFunctionRet, callee->getName(),
+          *allocaRetInst, *storeRetInst);
+      }
+
       std::size_t callCount{0};
       for (llvm::CallInst* callInst : callSites)
       {

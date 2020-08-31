@@ -78,6 +78,7 @@ public:
   ArgIdxAllocaMap get_argument_pointers() const noexcept;
   llvm::AllocaInst* get_argument_pointer(std::size_t argIdx) const noexcept;
 
+  llvm::StoreInst* get_return_store() const noexcept;
   llvm::AllocaInst* get_return_pointer() const noexcept;
 
   bool combine_call(llvm::CallInst& callInst) noexcept;

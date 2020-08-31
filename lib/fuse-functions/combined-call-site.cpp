@@ -252,11 +252,11 @@ llvm::AllocaInst* jvs::CombinedCallSite::get_argument_pointer(
   return nullptr;
 }
 
-llvm::AllocaInst* jvs::CombinedCallSite::get_return_pointer() const noexcept
+llvm::StoreInst* jvs::CombinedCallSite::get_return_store() const noexcept
 {
   llvm::Instruction* blockFront = &*return_switch_->getParent()->begin();
   auto prevNode = return_switch_->getPrevNode();
-  while (prevNode != blockFront)
+  while (prevNode && prevNode != blockFront)
   {
     if (llvm::StoreInst* storeInst = llvm::dyn_cast<llvm::StoreInst>(prevNode))
     {
@@ -265,11 +265,22 @@ llvm::AllocaInst* jvs::CombinedCallSite::get_return_pointer() const noexcept
         jvs::FuseFunctionRet);
       if (retNameBuf && retNameBuf->equals(callee_name_))
       {
-        return llvm::cast<llvm::AllocaInst>(storeInst->getPointerOperand());
+        return storeInst;
       }
     }
 
     prevNode = prevNode->getPrevNode();
+  }
+
+  return nullptr;
+}
+
+llvm::AllocaInst* jvs::CombinedCallSite::get_return_pointer() const noexcept
+{
+  auto storeInst = get_return_store();
+  if (storeInst)
+  {
+    return llvm::cast<llvm::AllocaInst>(storeInst->getPointerOperand());
   }
 
   return nullptr;
@@ -288,6 +299,7 @@ bool jvs::CombinedCallSite::combine_call(llvm::CallInst& callInst) noexcept
     return false;
   }
 
+  auto calleeReturnType = callInst.getCalledFunction()->getReturnType();
   auto argCount = callInst.getNumArgOperands();
   auto argPtrMap = get_argument_pointers();
   if (argPtrMap.size() != argCount)
@@ -312,16 +324,50 @@ bool jvs::CombinedCallSite::combine_call(llvm::CallInst& callInst) noexcept
     }
   }
 
-  // Load the return value (if the call site expects it and if the
-  // callee doesn't return void).
-  llvm::LoadInst* loadRetInst{nullptr};
-  if (!callInst.getFunctionType()->getReturnType()->isVoidTy())
+  // If the function has any users (such as a stored return value), make sure we
+  // have corresponding load instructions for each of them that read from our
+  // own store pointer instead. Any users that are simply store instructions can
+  // be trivially removed since we always generate a return store for every
+  // non-void-returning function regardless of whether or not call instructions
+  // ignore it.
+  if (!callInst.user_empty() && !calleeReturnType->isVoidTy())
   {
-    if (auto retPtr = 
-      llvm::dyn_cast_or_null<llvm::AllocaInst>(get_return_pointer()))
+    auto returnBuffer = get_return_pointer();
+    assert(returnBuffer && "No return store has been created.");
+    while (!callInst.user_empty())
     {
-      loadRetInst = new llvm::LoadInst(retPtr->getAllocatedType(),retPtr, "", 
-        &callInst);
+      auto u = llvm::cast<llvm::Instruction>(callInst.user_back());
+      if (llvm::isa<llvm::StoreInst>(u))
+      {
+        u->eraseFromParent();
+      }
+      else if (auto phi = llvm::dyn_cast<llvm::PHINode>(u))
+      {
+        // Stolen directly from llvm::DemoteRegToStack() with slight 
+        // modification...
+        llvm::DenseMap<llvm::BasicBlock*, llvm::Value*> loads{};
+        for (unsigned int i = 0, e = phi->getNumIncomingValues(); i != e; ++i)
+        {
+          if (phi->getIncomingValue(i) == &callInst)
+          {
+            llvm::Value*& v = loads[phi->getIncomingBlock(i)];
+            if (!v)
+            {
+              // Insert the load into the predecessor block.
+              v = new llvm::LoadInst(callInst.getType(), returnBuffer, "",
+                phi->getIncomingBlock(i)->getTerminator());
+            }
+
+            phi->setIncomingValue(i, v);
+          }
+        }
+      }
+      else
+      {
+        auto loadInst = 
+          new llvm::LoadInst(callInst.getType(), returnBuffer, "", u);
+        u->replaceUsesOfWith(&callInst, loadInst);
+      }
     }
   }
 
@@ -333,16 +379,10 @@ bool jvs::CombinedCallSite::combine_call(llvm::CallInst& callInst) noexcept
   auto* callBranch =
     llvm::cast<llvm::BranchInst>(parentBlock->getTerminator());
   callBranch->setSuccessor(0, retBlock);
-  if (loadRetInst)
-  {
-    callInst.moveBefore(retBlock->getFirstNonPHI());
-    loadRetInst->moveBefore(&callInst);
-    callInst.replaceAllUsesWith(loadRetInst);
-  }
 
   // We no longer need the existing call site.
   callInst.eraseFromParent();
-
+  
   // Add a new switch case for the return block.
   return_switch_->addCase(blockIdConst, retBlock);
   return true;

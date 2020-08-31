@@ -50,6 +50,20 @@ llvm::MDNode* attach_metadata(llvm::Instruction& inst, llvm::StringRef name,
 llvm::MDNode* attach_metadata(llvm::Instruction& inst, llvm::StringRef name,
   std::uint64_t value);
 
+template <typename... InstructionTs>
+void attach_metadata(llvm::StringRef name, llvm::StringRef value,
+  InstructionTs&&... inst)
+{
+  ((attach_metadata(std::forward<InstructionTs>(inst), name, value)), ...);
+}
+
+template <typename... InstructionTs>
+void attach_metadata(llvm::StringRef name, std::uint64_t value,
+  InstructionTs&&... inst)
+{
+  ((attach_metadata(std::forward<InstructionTs>(inst), name, value)), ...);
+}
+
 //!
 //! Creates metadata marker
 //!
