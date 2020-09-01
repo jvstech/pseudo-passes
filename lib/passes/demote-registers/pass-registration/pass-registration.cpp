@@ -1,15 +1,16 @@
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
 
-#include "fuse-functions/fuse-functions.h"
+
+#include "passes/demote-registers.h"
 
 namespace
 {
 
-static constexpr char PluginName[] = "FuseFunctions";
+static constexpr char PluginName[] = "DemoteRegisters";
 
 // Pass registration
-static llvm::PassPluginLibraryInfo getFuseFunctionsPluginInfo()
+static llvm::PassPluginLibraryInfo getDemoteRegistersPluginInfo()
 {
   return
   {
@@ -18,27 +19,6 @@ static llvm::PassPluginLibraryInfo getFuseFunctionsPluginInfo()
     LLVM_VERSION_STRING,
     [](llvm::PassBuilder& passBuilder)
     {
-      // Module passes
-      passBuilder.registerPipelineParsingCallback(
-        [](llvm::StringRef name, llvm::ModulePassManager& mpm,
-          llvm::ArrayRef<llvm::PassBuilder::PipelineElement>)
-        {
-          if (name.equals("fuse-functions"))
-          {
-            mpm.addPass(jvs::FuseFunctionsPass());
-            return true;
-          }
-          else if (name.equals("fuse-functions<force>") ||
-            name.equals("fuse-functions-force"))
-          {
-            mpm.addPass(jvs::FuseFunctionsPass(true));
-            return true;
-          }
-
-          return false;
-        });
-      
-      // Function passes
       passBuilder.registerPipelineParsingCallback(
         [](llvm::StringRef name, llvm::FunctionPassManager& fpm,
           llvm::ArrayRef<llvm::PassBuilder::PipelineElement>)
@@ -62,5 +42,5 @@ static llvm::PassPluginLibraryInfo getFuseFunctionsPluginInfo()
 extern "C" LLVM_ATTRIBUTE_WEAK auto llvmGetPassPluginInfo()
 -> ::llvm::PassPluginLibraryInfo
 {
-  return getFuseFunctionsPluginInfo();
+  return getDemoteRegistersPluginInfo();
 }

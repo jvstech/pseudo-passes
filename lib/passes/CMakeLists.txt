@@ -1,0 +1,5 @@
+add_subdirectory(breakpoint-net)
+add_subdirectory(demote-registers)
+add_subdirectory(fuse-functions)
+add_subdirectory(promote-blocks)
+add_subdirectory(stack-to-global)

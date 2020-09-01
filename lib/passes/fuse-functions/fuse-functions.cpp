@@ -1,4 +1,4 @@
-#include "fuse-functions/fuse-functions.h"
+#include "passes/fuse-functions.h"
 
 #include <cassert>
 #include <cstddef>
@@ -119,9 +119,9 @@ static bool does_value_escape(const llvm::Instruction& inst)
 
 static void demote_registers(llvm::Function& f)
 {
-  // Find first non-alloca instruction and create insertion point. This is
-  // safe if block is well-formed: it always have terminator, otherwise
-  // we'll get and assertion.
+  // Find the first non-alloca instruction and create an insertion point. This 
+  // is safe if the block is well-formed: it will always have a terminator;
+  // otherwise we'll trigger an assertion.
   auto& bbEntry = f.getEntryBlock();
   llvm::BasicBlock::iterator it = bbEntry.begin();
   for (; llvm::isa<llvm::AllocaInst>(it); ++it)
@@ -147,7 +147,7 @@ static void demote_registers(llvm::Function& f)
     }
   }
 
-  // Demote escaped instructions
+  // Demote escaped instructions.
   NumRegsDemoted += workList.size();
   for (llvm::Instruction* ilb : llvm::reverse(workList))
   {
@@ -187,7 +187,7 @@ static void demote_registers(llvm::Function& f)
 
   workList.clear();
 
-  // Find all phi's
+  // Find all phi nodes.
   for (llvm::BasicBlock& ibb : f)
   {
     for (llvm::BasicBlock::iterator iib = ibb.begin(), iie = ibb.end();
@@ -200,7 +200,7 @@ static void demote_registers(llvm::Function& f)
     }
   }
 
-  // Demote phi nodes
+  // Demote phi nodes.
   NumPhisDemoted += workList.size();
   for (llvm::Instruction* ilb : llvm::reverse(workList))
   {

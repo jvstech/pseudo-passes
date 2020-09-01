@@ -1,4 +1,4 @@
-#include "promote-blocks/promote-blocks.h"
+#include "passes/promote-blocks.h"
 
 #include <algorithm>
 #include <cstddef>
