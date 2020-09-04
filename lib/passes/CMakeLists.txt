@@ -1,5 +1,8 @@
 add_subdirectory(breakpoint-net)
 add_subdirectory(demote-registers)
+add_subdirectory(function-name-trace)
 add_subdirectory(fuse-functions)
+add_subdirectory(pachinko-calls)
 add_subdirectory(promote-blocks)
+add_subdirectory(resize-malloc)
 add_subdirectory(stack-to-global)

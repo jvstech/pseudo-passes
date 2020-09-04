@@ -8,7 +8,7 @@
 namespace llvm
 {
 
-class Module;
+class Function;
 
 } // namespace llvm
 

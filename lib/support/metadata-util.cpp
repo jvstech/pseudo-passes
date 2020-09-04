@@ -6,6 +6,7 @@
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
@@ -57,9 +58,11 @@ llvm::MDNode* jvs::attach_metadata(llvm::Instruction& inst,
 llvm::MDNode* jvs::attach_metadata(llvm::Instruction& inst, 
   llvm::StringRef name, std::uint64_t value)
 {
-  llvm::StringRef strAlias(reinterpret_cast<const char*>(&value), 
-    sizeof(value));
-  return attach_metadata(inst, name, strAlias);
+  auto& ctx = inst.getContext();
+  llvm::MDNode* node = llvm::MDNode::get(ctx, llvm::ConstantAsMetadata::get(
+    llvm::ConstantInt::get(ctx, llvm::APInt(64, value))));
+  inst.setMetadata(name, node);
+  return node;
 }
 
 llvm::Instruction* jvs::create_metadata_marker(llvm::Instruction& insertBefore)
@@ -386,14 +389,22 @@ std::optional<llvm::StringRef> jvs::get_metadata(llvm::Instruction& inst,
 std::optional<std::uint64_t> jvs::get_uint64_metadata(llvm::Instruction& inst,
   llvm::StringRef name)
 {
-  if (auto valueBuffer = get_metadata(inst, name))
+  if (auto* node = inst.getMetadata(name))
   {
-    llvm::StringRef stringValue = *valueBuffer;
-    // This is bad, bad aliasing. Do not do this for real, kids.
     std::optional<std::uint64_t> result(std::in_place,
-      *reinterpret_cast<const std::uint64_t*>(stringValue.data()));
+      llvm::cast<llvm::ConstantInt>(llvm::cast<llvm::ConstantAsMetadata>(
+        node->getOperand(0))->getValue())->getZExtValue());
     return result;
   }
+
+  //if (auto valueBuffer = get_metadata(inst, name))
+  //{
+  //  llvm::StringRef stringValue = *valueBuffer;
+  //  // This is bad, bad aliasing. Do not do this for real, kids.
+  //  std::optional<std::uint64_t> result(std::in_place,
+  //    *reinterpret_cast<const std::uint64_t*>(stringValue.data()));
+  //  return result;
+  //}
 
   return {};
 }

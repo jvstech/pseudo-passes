@@ -51,3 +51,5 @@ if (APPLE)
 endif()
 
 add_subdirectory(lib)
+add_subdirectory(benchmarks)
+

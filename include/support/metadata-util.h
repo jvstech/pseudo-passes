@@ -22,6 +22,7 @@ class Function;
 class Instruction;
 class MDNode;
 class MDString;
+class Value;
 
 } // namespace llvm
 
@@ -47,9 +48,25 @@ using StringPredicate = std::function<bool(const llvm::StringRef&)>;
 llvm::MDNode* attach_metadata(llvm::Instruction& inst, llvm::StringRef name,
   llvm::StringRef value);
 
+//!
+//! Attach custom metadata to the given instruction.
+//!
+//! @param [in,out] inst
+//!   The instruction to which metadata will be attached.
+//! @param name
+//!   Metadata name.
+//! @param value
+//!   Metadata value.
+//!
+//! @returns
+//!   A pointer to a llvm::MDNode created by this function.
+//!
 llvm::MDNode* attach_metadata(llvm::Instruction& inst, llvm::StringRef name,
   std::uint64_t value);
 
+//!
+//! Attach custom metadata to multiple instructions.
+//!
 template <typename... InstructionTs>
 void attach_metadata(llvm::StringRef name, llvm::StringRef value,
   InstructionTs&&... inst)
@@ -57,6 +74,9 @@ void attach_metadata(llvm::StringRef name, llvm::StringRef value,
   ((attach_metadata(std::forward<InstructionTs>(inst), name, value)), ...);
 }
 
+//!
+//! Attach custom metadata to multiple instructions.
+//!
 template <typename... InstructionTs>
 void attach_metadata(llvm::StringRef name, std::uint64_t value,
   InstructionTs&&... inst)
@@ -65,368 +85,99 @@ void attach_metadata(llvm::StringRef name, std::uint64_t value,
 }
 
 //!
-//! Creates metadata marker
-//!
-//! @param [in,out] insertAtEnd
-//!   The insert at end.
-//!
-//! @returns
-//!   Null if it fails, else the new metadata marker.
+//! Creates no-op instruction for attaching metadata for pass purposes.
 //!
 llvm::Instruction* create_metadata_marker(llvm::BasicBlock& insertAtEnd);
 
 //!
-//! Creates metadata marker
-//!
-//! @param [in,out] insertBefore
-//!   The insert before.
-//!
-//! @returns
-//!   Null if it fails, else the new metadata marker.
+//! Creates no-op instruction for attaching metadata for pass purposes.
 //!
 llvm::Instruction* create_metadata_marker(llvm::Instruction& insertBefore);
 
 //!
-//! Creates a metadata
-//!
-//! @param [in,out] insertBefore
-//!   The insert before.
-//! @param          name
-//!   The name.
-//! @param          value
-//!   The value.
-//!
-//! @returns
-//!   Null if it fails, else the new metadata.
+//! Creates metadata no-op instruction with the given metadata already attached.
 //!
 llvm::Instruction* create_metadata(llvm::Instruction& insertBefore, 
   llvm::StringRef name, llvm::StringRef value);
 
 //!
-//! Creates a metadata
-//!
-//! @param [in,out] insertAtEnd
-//!   The insert at end.
-//! @param          name
-//!   The name.
-//! @param          value
-//!   The value.
-//!
-//! @returns
-//!   Null if it fails, else the new metadata.
+//! Creates metadata no-op instruction with the given metadata already attached.
 //!
 llvm::Instruction* create_metadata(llvm::BasicBlock& insertAtEnd,
   llvm::StringRef name, llvm::StringRef value);
 
 //!
-//! Searches for the first metadata markers
-//!
-//! @param [in,out] block
-//!   The block.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata markers.
+//! Searches for all metadata no-op instructions in the given block.
 //!
 std::vector<llvm::Instruction*> find_metadata_markers(llvm::BasicBlock& block);
 
 //!
-//! Searches for the first metadata markers
-//!
-//! @param [in,out] f
-//!   A llvm::Function to process.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata markers.
+//! Searches for all metadata no-op instructions in the given function.
 //!
 std::vector<llvm::Instruction*> find_metadata_markers(llvm::Function& f);
 
 //!
-//! Searches for the first metadata markers
-//!
-//! @param [in,out] block
-//!   The block.
-//! @param          name
-//!   The name.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata markers.
+//! Searches for metadata no-op instructions with the given metadata name in the
+//! given block.
 //!
 std::vector<llvm::Instruction*> find_metadata_markers(llvm::BasicBlock& block,
   llvm::StringRef name);
 
 //!
-//! Searches for the first metadata markers
-//!
-//! @param [in,out] f
-//!   A llvm::Function to process.
-//! @param          name
-//!   The name.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata markers.
+//! Searches for metadata no-op instructions with the given metadata name in the
+//! given function.
 //!
 std::vector<llvm::Instruction*> find_metadata_markers(llvm::Function& f, 
   llvm::StringRef name);
 
-//!
-//! Searches for the first metadata
-//!
-//! @param [in,out] block
-//!   The block.
-//! @param          name
-//!   The name.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata.
-//!
 std::vector<llvm::Instruction*> find_metadata(llvm::BasicBlock& block, 
   llvm::StringRef name);
 
-//!
-//! Searches for the first metadata
-//!
-//! @param [in,out] f
-//!   A llvm::Function to process.
-//! @param          name
-//!   The name.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata.
-//!
 std::vector<llvm::Instruction*> find_metadata(llvm::Function& f,
   llvm::StringRef name);
 
-//!
-//! Searches for the first metadata
-//!
-//! @param [in,out] block
-//!   The block.
-//! @param          name
-//!   The name.
-//! @param [in,out] filterPredicate
-//!   The filter predicate.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata.
-//!
 std::vector<llvm::Instruction*> find_metadata(llvm::BasicBlock& block,
   llvm::StringRef name, StringPredicate&& filterPredicate);
 
-//!
-//! Searches for the first metadata
-//!
-//! @param [in,out] f
-//!   A llvm::Function to process.
-//! @param          name
-//!   The name.
-//! @param [in,out] filterPredicate
-//!   The filter predicate.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata.
-//!
 std::vector<llvm::Instruction*> find_metadata(llvm::Function& f,
   llvm::StringRef name, StringPredicate&& filterPredicate);
 
-//!
-//! Searches for the first metadata
-//!
-//! @param [in,out] block
-//!   The block.
-//! @param          name
-//!   The name.
-//! @param          value
-//!   The value.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata.
-//!
 std::vector<llvm::Instruction*> find_metadata(llvm::BasicBlock& block,
   llvm::StringRef name, llvm::StringRef value);
 
-//!
-//! Searches for the first metadata
-//!
-//! @param [in,out] f
-//!   A llvm::Function to process.
-//! @param          name
-//!   The name.
-//! @param          value
-//!   The value.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata.
-//!
 std::vector<llvm::Instruction*> find_metadata(llvm::Function& f,
   llvm::StringRef name, llvm::StringRef value);
 
-//!
-//! Searches for the first metadata markers
-//!
-//! @param [in,out] block
-//!   The block.
-//! @param          name
-//!   The name.
-//! @param [in,out] filterPredicate
-//!   The filter predicate.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata markers.
-//!
 std::vector<llvm::Instruction*> find_metadata_markers(llvm::BasicBlock& block, 
   llvm::StringRef name, StringPredicate&& filterPredicate);
 
-//!
-//! Searches for the first metadata markers
-//!
-//! @param [in,out] f
-//!   A llvm::Function to process.
-//! @param          name
-//!   The name.
-//! @param [in,out] filterPredicate
-//!   The filter predicate.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata markers.
-//!
 std::vector<llvm::Instruction*> find_metadata_markers(llvm::Function& f,
   llvm::StringRef name, StringPredicate&& filterPredicate);
 
-//!
-//! Searches for the first metadata markers
-//!
-//! @param [in,out] block
-//!   The block.
-//! @param          name
-//!   The name.
-//! @param          value
-//!   The value.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata markers.
-//!
 std::vector<llvm::Instruction*> find_metadata_markers(llvm::BasicBlock& block,
   llvm::StringRef name, llvm::StringRef value);
 
-//!
-//! Searches for the first metadata markers
-//!
-//! @param [in,out] f
-//!   A llvm::Function to process.
-//! @param          name
-//!   The name.
-//! @param          value
-//!   The value.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata markers.
-//!
 std::vector<llvm::Instruction*> find_metadata_markers(llvm::Function& f,
   llvm::StringRef name, llvm::StringRef value);
 
-//!
-//! Searches for the first metadata marker
-//!
-//! @param [in,out] block
-//!   The block.
-//! @param          name
-//!   The name.
-//! @param [in,out] filterPredicate
-//!   The filter predicate.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata marker.
-//!
 llvm::Instruction* find_metadata_marker(llvm::BasicBlock& block,
   llvm::StringRef name, StringPredicate&& filterPredicate);
 
-//!
-//! Searches for the first metadata marker
-//!
-//! @param [in,out] f
-//!   A llvm::Function to process.
-//! @param          name
-//!   The name.
-//! @param [in,out] filterPredicate
-//!   The filter predicate.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata marker.
-//!
 llvm::Instruction* find_metadata_marker(llvm::Function& f,
   llvm::StringRef name, StringPredicate&& filterPredicate);
 
-//!
-//! Searches for the first metadata marker
-//!
-//! @param [in,out] block
-//!   The block.
-//! @param          name
-//!   The name.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata marker.
-//!
 llvm::Instruction* find_metadata_marker(llvm::BasicBlock& block,
   llvm::StringRef name);
 
-//!
-//! Searches for the first metadata marker
-//!
-//! @param [in,out] f
-//!   A llvm::Function to process.
-//! @param          name
-//!   The name.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata marker.
-//!
 llvm::Instruction* find_metadata_marker(llvm::Function& f, 
   llvm::StringRef name);
 
-//!
-//! Searches for the first metadata marker
-//!
-//! @param [in,out] block
-//!   The block.
-//! @param          name
-//!   The name.
-//! @param          value
-//!   The value.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata marker.
-//!
 llvm::Instruction* find_metadata_marker(llvm::BasicBlock& block,
   llvm::StringRef name, llvm::StringRef value);
 
-//!
-//! Searches for the first metadata marker
-//!
-//! @param [in,out] f
-//!   A llvm::Function to process.
-//! @param          name
-//!   The name.
-//! @param          value
-//!   The value.
-//!
-//! @returns
-//!   Null if it fails, else the found metadata marker.
-//!
 llvm::Instruction* find_metadata_marker(llvm::Function& f, llvm::StringRef name,
   llvm::StringRef value);
 
-//!
-//! Gets a metadata
-//!
-//! @param [in,out] inst
-//!   The instance.
-//! @param          name
-//!   The name.
-//!
-//! @returns
-//!   The metadata.
-//!
 std::optional<llvm::StringRef> get_metadata(llvm::Instruction& inst,
   llvm::StringRef name);
 
